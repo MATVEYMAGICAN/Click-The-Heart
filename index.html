@@ -20,24 +20,10 @@
             left: 0;
             cursor: pointer;
         }
+        
+        /* Убираем старые буквы */
         .letter {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #ffd6e8;
-            font-weight: bold;
-            font-family: 'Segoe UI', sans-serif;
-            text-shadow: 0 0 15px rgba(255, 100, 180, 0.6);
-            font-size: 15vw;
-            z-index: 2;
-            pointer-events: none;
-            transition: opacity 0.5s ease;
-        }
-        .left {
-            left: 5%;
-        }
-        .right {
-            right: 5%;
+            display: none;
         }
         
         .heart-container {
@@ -120,28 +106,8 @@
         }
         
         @media (max-width: 480px) {
-            .letter { font-size: 20vw; }
             .heart-container { width: 70vmin; height: 70vmin; }
             .reset-btn { width: 40px; height: 40px; top: 10px; right: 10px; }
-        }
-
-        .loader {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: black;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-            transition: opacity 1s ease;
-        }
-        .loader-text {
-            color: #ffb6d9;
-            font-size: 24px;
-            letter-spacing: 2px;
         }
         .click-hint {
             position: absolute;
@@ -164,13 +130,13 @@
     </style>
 </head>
 <body>
-    <div class="loader" id="loader">
-        <div class="loader-text">Загрузка...</div>
-    </div>
     
-    <canvas id="canvas"></canvas>
-    <div class="letter left" id="letterI">I</div>
-    <div class="letter right" id="letterU">U</div>
+    <!-- Основной canvas для анимации частиц -->
+    <canvas id="mainCanvas"></canvas>
+    
+    <!-- Canvas для букв из частиц -->
+    <canvas id="lettersCanvas"></canvas>
+    
     <div class="heart-container" id="heartContainer">
         <img src="photo_2026-01-20_20-52-46.jpg" alt="Heart" class="heart-image" id="heartImage">
         <div class="signature" id="signature">sandramir💕</div>
@@ -180,23 +146,28 @@
     <div class="reset-btn" id="resetBtn">⟳</div>
     
     <script>
-        const canvas = document.getElementById("canvas");
-        const ctx = canvas.getContext("2d");
+        // Основной canvas для сердца и анимации
+        const mainCanvas = document.getElementById("mainCanvas");
+        const mainCtx = mainCanvas.getContext("2d");
+        
+        // Canvas для букв из частиц
+        const lettersCanvas = document.getElementById("lettersCanvas");
+        const lettersCtx = lettersCanvas.getContext("2d");
+        
         const heartContainer = document.getElementById('heartContainer');
         const heartImage = document.getElementById('heartImage');
-        const letterI = document.getElementById('letterI');
-        const letterU = document.getElementById('letterU');
         const signature = document.getElementById('signature');
         const resetBtn = document.getElementById('resetBtn');
         const loader = document.getElementById('loader');
         const clickHint = document.getElementById('clickHint');
         
         function updateCanvasSize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            mainCanvas.width = lettersCanvas.width = window.innerWidth;
+            mainCanvas.height = lettersCanvas.height = window.innerHeight;
         }
         updateCanvasSize();
         
+        // Частицы для сердца (основная логика остается как в оригинале)
         const particles = [];
         const heartPoints = [];
         const particleCount = 2000;
@@ -212,9 +183,100 @@
         let heartPulsePhase = 0;
         let heartPulseIntensity = 0;
 
+        // Частицы для букв
+        const letterParticles = [];
+        const letterPoints = { I: [], U: [] };
+        
+        // Функция для генерации точек букв (из вашего кода)
+        function generateLetter(letter, cx, cy, size) {
+            const c = document.createElement("canvas");
+            const ct = c.getContext("2d");
+            c.width = size * 2;
+            c.height = size * 2;
+
+            ct.fillStyle = "black";
+            ct.fillRect(0, 0, c.width, c.height);
+
+            ct.fillStyle = "white";
+            ct.font = `bold ${size}px Segoe UI`;
+            ct.textAlign = "center";
+            ct.textBaseline = "middle";
+            ct.fillText(letter, c.width/2, c.height/2);
+
+            const data = ct.getImageData(0, 0, c.width, c.height).data;
+            const points = [];
+
+            for (let y = 0; y < c.height; y += 2) {
+                for (let x = 0; x < c.width; x += 2) {
+                    if (data[(y * c.width + x) * 4] > 200) {
+                        points.push({
+                            x: cx + x - c.width/2,
+                            y: cy + y - c.height/2
+                        });
+                    }
+                }
+            }
+            return points;
+        }
+
+        function initLetters() {
+            const size = Math.min(mainCanvas.width, mainCanvas.height) * 0.35;
+            letterPoints.I = generateLetter("I", mainCanvas.width * 0.15, mainCanvas.height / 2, size);
+            letterPoints.U = generateLetter("U", mainCanvas.width * 0.85, mainCanvas.height / 2, size);
+            
+            // Инициализируем частицы букв
+            letterParticles.length = 0;
+            
+            [...letterPoints.I, ...letterPoints.U].forEach(p => {
+                letterParticles.push({
+                    x: Math.random() * mainCanvas.width,
+                    y: Math.random() * mainCanvas.height,
+                    tx: p.x,
+                    ty: p.y,
+                    size: 1.8,
+                    speed: 0.01,
+                    hue: 330 + Math.random() * 20,
+                    phase: Math.random() * Math.PI * 2,
+                    pulseIntensity: 0.5 + Math.random() * 0.5,
+                    inPosition: false
+                });
+            });
+        }
+
+        function animateLetters() {
+            lettersCtx.clearRect(0, 0, lettersCanvas.width, lettersCanvas.height);
+    
+            letterParticles.forEach(p => {
+                if (!p.inPosition) {
+                    // Вычисляем расстояние до цели
+                    const dx = p.tx - p.x;
+                    const dy = p.ty - p.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Замедляем при приближении (нелинейная скорость)
+                    const speedMultiplier = Math.min(distance / 10, 1); // Замедление на последних 100 пикселях
+                    const currentSpeed = p.speed * speedMultiplier;
+            
+                    p.x += dx * currentSpeed;
+                    p.y += dy * currentSpeed;
+            
+                    if (distance < 3) {
+                        p.inPosition = true;
+                    }
+                }
+        
+        const pulse = Math.sin(time + p.phase) * 0.4 * p.pulseIntensity + 1;
+
+        lettersCtx.beginPath();
+        lettersCtx.fillStyle = `hsla(${p.hue},100%,70%,0.9)`;
+        lettersCtx.arc(p.x, p.y, p.size * pulse, 0, Math.PI * 2);
+        lettersCtx.fill();
+    });
+}
+
         // Динамический масштаб сердца в зависимости от экрана
         function getHeartScale() {
-            return Math.min(canvas.width, canvas.height) / 5;
+            return Math.min(mainCanvas.width, mainCanvas.height) / 5;
         }
 
         const filledCount = Math.floor(particleCount * fillRatio);
@@ -235,16 +297,16 @@
                 const p = inside ? heartPoints[i] : { x: 0, y: 0 };
                 
                 particles.push({
-                    x: Math.random() * canvas.width,
-                    y: Math.random() * canvas.height,
+                    x: Math.random() * mainCanvas.width,
+                    y: Math.random() * mainCanvas.height,
                     ox: p.x,
                     oy: p.y,
-                    targetX: canvas.width / 2 + p.x * scale,
-                    targetY: canvas.height / 2 - p.y * scale,
-                    heartX: canvas.width / 2 + p.x * scale,
-                    heartY: canvas.height / 2 - p.y * scale,
-                    snowX: Math.random() * canvas.width,
-                    snowY: Math.random() * canvas.height - canvas.height,
+                    targetX: mainCanvas.width / 2 + p.x * scale,
+                    targetY: mainCanvas.height / 2 - p.y * scale,
+                    heartX: mainCanvas.width / 2 + p.x * scale,
+                    heartY: mainCanvas.height / 2 - p.y * scale,
+                    snowX: Math.random() * mainCanvas.width,
+                    snowY: Math.random() * mainCanvas.height - mainCanvas.height,
                     snowSpeed: 0.5 + Math.random() * 1.5,
                     snowDrift: Math.random() * 0.5 - 0.25,
                     snowSize: Math.random() * 2 + 1,
@@ -272,8 +334,6 @@
             signatureShown = false;
             clickHint.style.opacity = '0';
             heartClickable = false;
-            letterI.style.opacity = '0';
-            letterU.style.opacity = '0';
             signature.style.opacity = '0';
             particles.forEach(p => {
                 p.collected = false;
@@ -285,7 +345,7 @@
         function initSnowfall() {
             particles.forEach(p => {
                 p.inSnowfall = true;
-                p.y = Math.random() * canvas.height - canvas.height;
+                p.y = Math.random() * mainCanvas.height - mainCanvas.height;
             });
             playSoftSound(349.23, 1.0);
         }
@@ -294,12 +354,18 @@
             animationPhase = 'idle';
             heartContainer.style.opacity = '0';
             signature.style.opacity = '0';
-            letterI.style.opacity = '1';
-            letterU.style.opacity = '1';
             clickHint.style.opacity = '1';
             heartClickable = true;
             heartPulseIntensity = 0;
             
+            // Сбрасываем частицы букв
+            letterParticles.forEach(p => {
+                p.x = Math.random() * mainCanvas.width;
+                p.y = Math.random() * mainCanvas.height;
+                p.inPosition = false;
+            });
+            
+            // Сбрасываем частицы сердца
             initializeParticles();
             playSoftSound(261.63, 0.3);
         }
@@ -353,13 +419,24 @@
             if (!lastTime) lastTime = timestamp;
             const deltaTime = Math.min(timestamp - lastTime, 100) / 16.67;
             lastTime = timestamp;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
             time += 0.04 * deltaTime;
             const currentTime = Date.now();
             const elapsed = currentTime - animationStartTime;
             
             // Обновляем усиленную пульсацию сердца
             const pulseFactor = updateHeartPulse();
+            
+            // Очищаем основной canvas
+            mainCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+            
+            // Анимируем буквы (если не в процессе анимации сердца)
+            if (animationPhase === 'idle') {
+                animateLetters();
+            } else {
+                // Скрываем буквы во время анимации сердца
+                lettersCtx.clearRect(0, 0, lettersCanvas.width, lettersCanvas.height);
+            }
             
             if (animationPhase === 'collecting') {
                 // Усиленная пульсация при сборе частиц
@@ -381,27 +458,27 @@
                     const pulseSize = p.size * (1 + individualPulse) * (1 + pulseFactor * 0.3);
                     const pulseBrightness = 0.8 + pulseFactor * 0.4;
                     
-                    ctx.beginPath();
-                    ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${pulseBrightness})`;
-                    ctx.arc(p.x, p.y, pulseSize, 0, Math.PI * 2);
-                    ctx.fill();
+                    mainCtx.beginPath();
+                    mainCtx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${pulseBrightness})`;
+                    mainCtx.arc(p.x, p.y, pulseSize, 0, Math.PI * 2);
+                    mainCtx.fill();
                 });
                 
                 // Усиленное свечение вокруг сердца
                 if (glowIntensity > 0.1) {
                     const glowSize = 120 + pulseFactor * 100;
-                    const gradient = ctx.createRadialGradient(
-                        canvas.width / 2, canvas.height / 2, 0,
-                        canvas.width / 2, canvas.height / 2, glowSize
+                    const gradient = mainCtx.createRadialGradient(
+                        mainCanvas.width / 2, mainCanvas.height / 2, 0,
+                        mainCanvas.width / 2, mainCanvas.height / 2, glowSize
                     );
                     gradient.addColorStop(0, `rgba(255, 100, 180, ${0.4 * glowIntensity})`);
                     gradient.addColorStop(0.5, `rgba(255, 100, 180, ${0.2 * glowIntensity})`);
                     gradient.addColorStop(1, 'rgba(255, 100, 180, 0)');
                     
-                    ctx.beginPath();
-                    ctx.fillStyle = gradient;
-                    ctx.arc(canvas.width / 2, canvas.height / 2, glowSize, 0, Math.PI * 2);
-                    ctx.fill();
+                    mainCtx.beginPath();
+                    mainCtx.fillStyle = gradient;
+                    mainCtx.arc(mainCanvas.width / 2, mainCanvas.height / 2, glowSize, 0, Math.PI * 2);
+                    mainCtx.fill();
                 }
                 
                 if (collectedParticles >= particles.length || elapsed > 2000) {
@@ -423,10 +500,10 @@
                     const pulseSize = p.size * (1 - progress * 0.7) * (1 + explosionPulse * p.pulseIntensity);
                     const pulseOpacity = 0.8 * (1 - progress * 0.5) * (1 + explosionPulse * 0.3);
                     
-                    ctx.beginPath();
-                    ctx.fillStyle = `hsla(${p.hue}, 100%, ${70 + explosionPulse * 20}%, ${pulseOpacity})`;
-                    ctx.arc(p.x, p.y, pulseSize, 0, Math.PI * 2);
-                    ctx.fill();
+                    mainCtx.beginPath();
+                    mainCtx.fillStyle = `hsla(${p.hue}, 100%, ${70 + explosionPulse * 20}%, ${pulseOpacity})`;
+                    mainCtx.arc(p.x, p.y, pulseSize, 0, Math.PI * 2);
+                    mainCtx.fill();
                 });
                 
                 if (elapsed > 1000) {
@@ -446,19 +523,19 @@
                 particles.forEach(p => {
                     p.y += p.snowSpeed * deltaTime * (1 + snowfallPulse * 0.3);
                     p.x += (Math.sin(time * 0.7 + p.y * 0.01) * 0.5 + p.snowDrift) * deltaTime * (1 + snowfallPulse * 0.2);
-                    if (p.y > canvas.height + 50) { 
+                    if (p.y > mainCanvas.height + 50) { 
                         p.y = -50; 
-                        p.x = Math.random() * canvas.width; 
+                        p.x = Math.random() * mainCanvas.width; 
                     }
                     
                     // Усиленная пульсация снежинок
                     const pulseSize = p.snowSize * (1 + snowfallPulse * p.pulseIntensity * 0.8);
                     const pulseOpacity = p.snowOpacity * (1 + snowfallPulse * 0.5);
                     
-                    ctx.beginPath();
-                    ctx.fillStyle = `hsla(330, 100%, ${70 + snowfallBrightness * 30}%, ${pulseOpacity})`;
-                    ctx.arc(p.x, p.y, pulseSize, 0, Math.PI * 2);
-                    ctx.fill();
+                    mainCtx.beginPath();
+                    mainCtx.fillStyle = `hsla(330, 100%, ${70 + snowfallBrightness * 30}%, ${pulseOpacity})`;
+                    mainCtx.arc(p.x, p.y, pulseSize, 0, Math.PI * 2);
+                    mainCtx.fill();
                 });
             } else {
                 // В режиме ожидания - усиленная пульсация сердца из частиц
@@ -468,8 +545,8 @@
                 
                 particles.forEach(p => {
                     if (p.active) {
-                        p.targetX = canvas.width / 2 + p.ox * scale;
-                        p.targetY = canvas.height / 2 - p.oy * scale;
+                        p.targetX = mainCanvas.width / 2 + p.ox * scale;
+                        p.targetY = mainCanvas.height / 2 - p.oy * scale;
                     }
                     p.x += (p.targetX - p.x) * p.speed * deltaTime;
                     p.y += (p.targetY - p.y) * p.speed * deltaTime;
@@ -478,26 +555,26 @@
                     const particlePulse = Math.sin(time * p.pulseSpeed + p.pulseOffset) * 0.12 * p.pulseIntensity;
                     const currentSize = p.size * (1 + particlePulse) * (1 + idlePulse * 0.2);
                     
-                    ctx.beginPath();
-                    ctx.fillStyle = `hsla(${p.hue}, 100%, ${70 + brightnessPulse * 20}%, ${0.8 * (1 + idlePulse * 0.3)})`;
-                    ctx.arc(p.x, p.y, currentSize, 0, Math.PI * 2);
-                    ctx.fill();
+                    mainCtx.beginPath();
+                    mainCtx.fillStyle = `hsla(${p.hue}, 100%, ${70 + brightnessPulse * 20}%, ${0.8 * (1 + idlePulse * 0.3)})`;
+                    mainCtx.arc(p.x, p.y, currentSize, 0, Math.PI * 2);
+                    mainCtx.fill();
                 });
                 
                 // Легкое свечение в режиме ожидания
                 if (Math.abs(idlePulse) > 0.05) {
                     const glowSize = 80 + Math.abs(idlePulse) * 60;
-                    const gradient = ctx.createRadialGradient(
-                        canvas.width / 2, canvas.height / 2, 0,
-                        canvas.width / 2, canvas.height / 2, glowSize
+                    const gradient = mainCtx.createRadialGradient(
+                        mainCanvas.width / 2, mainCanvas.height / 2, 0,
+                        mainCanvas.width / 2, mainCanvas.height / 2, glowSize
                     );
                     gradient.addColorStop(0, `rgba(255, 100, 180, ${0.15 * Math.abs(idlePulse)})`);
                     gradient.addColorStop(1, 'rgba(255, 100, 180, 0)');
                     
-                    ctx.beginPath();
-                    ctx.fillStyle = gradient;
-                    ctx.arc(canvas.width / 2, canvas.height / 2, glowSize, 0, Math.PI * 2);
-                    ctx.fill();
+                    mainCtx.beginPath();
+                    mainCtx.fillStyle = gradient;
+                    mainCtx.arc(mainCanvas.width / 2, mainCanvas.height / 2, glowSize, 0, Math.PI * 2);
+                    mainCtx.fill();
                 }
                 
                 if (Date.now() - animationStartTime > 3000) clickHint.style.opacity = '1';
@@ -507,25 +584,25 @@
         }
 
         function init() {
+            initLetters();
             initializeParticles();
             initAudio();
-            setTimeout(() => {
-                loader.style.opacity = '0';
-                setTimeout(() => { loader.style.display = 'none'; isInitialized = true; }, 1000);
-            }, 1500);
+            isInitialized = true;
             animate(0);
         }
 
-        canvas.addEventListener('click', () => { if (heartClickable && animationPhase === 'idle') startHeartAnimation(); });
+        mainCanvas.addEventListener('click', () => { if (heartClickable && animationPhase === 'idle') startHeartAnimation(); });
+        lettersCanvas.addEventListener('click', () => { if (heartClickable && animationPhase === 'idle') startHeartAnimation(); });
         heartContainer.addEventListener('click', (e) => { e.stopPropagation(); if (heartClickable && animationPhase === 'idle') startHeartAnimation(); });
         resetBtn.addEventListener('click', (e) => { e.stopPropagation(); resetAnimation(); });
 
         window.addEventListener("resize", () => {
             updateCanvasSize();
+            initLetters();
             const scale = getHeartScale();
             particles.forEach(p => {
-                p.targetX = canvas.width / 2 + p.ox * scale;
-                p.targetY = canvas.height / 2 - p.oy * scale;
+                p.targetX = mainCanvas.width / 2 + p.ox * scale;
+                p.targetY = mainCanvas.height / 2 - p.oy * scale;
                 p.heartX = p.targetX;
                 p.heartY = p.targetY;
             });
