@@ -28,7 +28,7 @@
             font-weight: bold;
             font-family: 'Segoe UI', sans-serif;
             text-shadow: 0 0 15px rgba(255, 100, 180, 0.6);
-            font-size: 15vw; /* Адаптивный размер шрифта */
+            font-size: 15vw;
             z-index: 2;
             pointer-events: none;
             transition: opacity 0.5s ease;
@@ -39,12 +39,13 @@
         .right {
             right: 5%;
         }
+        
         .heart-container {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 80vmin; /* Размер относительно меньшей стороны экрана */
+            width: 80vmin;
             height: 80vmin;
             z-index: 3;
             opacity: 0;
@@ -55,26 +56,30 @@
             justify-content: center;
             cursor: pointer;
         }
+        
         .heart-image {
             width: 100%;
             height: 100%;
             object-fit: cover;
             border-radius: 50%;
-            box-shadow: 0 0 40px rgba(255, 100, 180, 0.5);
             pointer-events: auto;
+            box-shadow: 0 0 60px rgba(255, 100, 180, 0.8),
+                        0 0 100px rgba(255, 100, 180, 0.4);
         }
+        
         .signature {
             color: #ffb6d9;
             font-size: 5vmin;
             font-weight: bold;
             font-family: 'Segoe UI', sans-serif;
-            text-shadow: 0 0 15px rgba(255, 100, 180, 0.8);
+            text-shadow: 0 0 20px rgba(255, 100, 180, 1),
+                         0 0 40px rgba(255, 100, 180, 0.7);
             z-index: 4;
             opacity: 0;
             pointer-events: none;
             white-space: nowrap;
             transition: opacity 2s ease;
-            margin-top: 20px;
+            margin-top: 30px;
             text-align: center;
         }
         .controls {
@@ -114,7 +119,6 @@
             transform: rotate(180deg);
         }
         
-        /* Дополнительные корректировки для очень маленьких экранов */
         @media (max-width: 480px) {
             .letter { font-size: 20vw; }
             .heart-container { width: 70vmin; height: 70vmin; }
@@ -205,6 +209,8 @@
         let lastTime = 0;
         let isInitialized = false;
         let heartClickable = true;
+        let heartPulsePhase = 0;
+        let heartPulseIntensity = 0;
 
         // Динамический масштаб сердца в зависимости от экрана
         function getHeartScale() {
@@ -250,7 +256,10 @@
                     collected: false,
                     explosionAngle: Math.random() * Math.PI * 2,
                     explosionSpeed: 0.5 + Math.random() * 2,
-                    inSnowfall: false
+                    inSnowfall: false,
+                    pulseOffset: Math.random() * Math.PI * 2,
+                    pulseIntensity: 0.5 + Math.random() * 0.5,
+                    pulseSpeed: 1 + Math.random() * 2
                 });
             }
         }
@@ -289,6 +298,8 @@
             letterU.style.opacity = '1';
             clickHint.style.opacity = '1';
             heartClickable = true;
+            heartPulseIntensity = 0;
+            
             initializeParticles();
             playSoftSound(261.63, 0.3);
         }
@@ -319,16 +330,42 @@
             } catch (e) {}
         }
 
+        // Усиленная функция для пульсации сердца
+        function updateHeartPulse() {
+            if (animationPhase === 'collecting' || animationPhase === 'exploding') {
+                heartPulsePhase += 0.05;
+                // Более быстрое и интенсивное увеличение пульсации
+                heartPulseIntensity += (1.5 - heartPulseIntensity) * 0.1;
+            } else {
+                // Плавное уменьшение интенсивности пульсации
+                heartPulseIntensity *= 0.9;
+            }
+            
+            // Усиленная формула пульсации с двойным ритмом
+            const primaryPulse = Math.sin(heartPulsePhase * 2) * 0.25 * heartPulseIntensity;
+            const secondaryPulse = Math.sin(heartPulsePhase * 4) * 0.15 * heartPulseIntensity;
+            const tertiaryPulse = Math.sin(heartPulsePhase * 6) * 0.08 * heartPulseIntensity;
+            
+            return primaryPulse + secondaryPulse + tertiaryPulse;
+        }
+
         function animate(timestamp) {
             if (!lastTime) lastTime = timestamp;
             const deltaTime = Math.min(timestamp - lastTime, 100) / 16.67;
             lastTime = timestamp;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            time += 0.03 * deltaTime;
+            time += 0.04 * deltaTime;
             const currentTime = Date.now();
             const elapsed = currentTime - animationStartTime;
             
+            // Обновляем усиленную пульсацию сердца
+            const pulseFactor = updateHeartPulse();
+            
             if (animationPhase === 'collecting') {
+                // Усиленная пульсация при сборе частиц
+                const pulseScale = 1 + pulseFactor * 0.8;
+                const glowIntensity = Math.max(0, pulseFactor * 1.5);
+                
                 particles.forEach(p => {
                     if (!p.collected) {
                         p.x += (p.targetX - p.x) * 0.1 * deltaTime;
@@ -338,11 +375,35 @@
                             collectedParticles++;
                         }
                     }
+                    
+                    // Усиленная индивидуальная пульсация частиц
+                    const individualPulse = Math.sin(time * p.pulseSpeed + p.pulseOffset) * 0.2 * p.pulseIntensity * (1 + pulseFactor);
+                    const pulseSize = p.size * (1 + individualPulse) * (1 + pulseFactor * 0.3);
+                    const pulseBrightness = 0.8 + pulseFactor * 0.4;
+                    
                     ctx.beginPath();
-                    ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, 0.8)`;
-                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${pulseBrightness})`;
+                    ctx.arc(p.x, p.y, pulseSize, 0, Math.PI * 2);
                     ctx.fill();
                 });
+                
+                // Усиленное свечение вокруг сердца
+                if (glowIntensity > 0.1) {
+                    const glowSize = 120 + pulseFactor * 100;
+                    const gradient = ctx.createRadialGradient(
+                        canvas.width / 2, canvas.height / 2, 0,
+                        canvas.width / 2, canvas.height / 2, glowSize
+                    );
+                    gradient.addColorStop(0, `rgba(255, 100, 180, ${0.4 * glowIntensity})`);
+                    gradient.addColorStop(0.5, `rgba(255, 100, 180, ${0.2 * glowIntensity})`);
+                    gradient.addColorStop(1, 'rgba(255, 100, 180, 0)');
+                    
+                    ctx.beginPath();
+                    ctx.fillStyle = gradient;
+                    ctx.arc(canvas.width / 2, canvas.height / 2, glowSize, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
                 if (collectedParticles >= particles.length || elapsed > 2000) {
                     animationPhase = 'exploding';
                     animationStartTime = currentTime;
@@ -351,32 +412,60 @@
                 }
             } else if (animationPhase === 'exploding') {
                 const progress = Math.min(elapsed / 1000, 1);
+                const explosionPulse = Math.sin(time * 8) * 0.2 * (1 - progress);
+                
                 particles.forEach(p => {
                     const dist = progress * 40 * p.explosionSpeed * 60;
                     p.x = p.heartX + Math.cos(p.explosionAngle) * dist;
                     p.y = p.heartY + Math.sin(p.explosionAngle) * dist;
+                    
+                    // Усиленная пульсация во время взрыва
+                    const pulseSize = p.size * (1 - progress * 0.7) * (1 + explosionPulse * p.pulseIntensity);
+                    const pulseOpacity = 0.8 * (1 - progress * 0.5) * (1 + explosionPulse * 0.3);
+                    
                     ctx.beginPath();
-                    ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${0.8 * (1 - progress * 0.5)})`;
-                    ctx.arc(p.x, p.y, p.size * (1 - progress * 0.7), 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${p.hue}, 100%, ${70 + explosionPulse * 20}%, ${pulseOpacity})`;
+                    ctx.arc(p.x, p.y, pulseSize, 0, Math.PI * 2);
                     ctx.fill();
                 });
+                
                 if (elapsed > 1000) {
                     animationPhase = 'snowfall';
                     initSnowfall();
-                    setTimeout(() => { signature.style.opacity = '1'; signatureShown = true; playSoftSound(392.00, 1.0); }, 500);
+                    setTimeout(() => { 
+                        signature.style.opacity = '1'; 
+                        signatureShown = true; 
+                        playSoftSound(392.00, 1.0); 
+                    }, 500);
                 }
             } else if (animationPhase === 'snowfall') {
+                // Усиленная пульсация в метельном режиме
+                const snowfallPulse = Math.sin(time * 0.8) * 0.15;
+                const snowfallBrightness = Math.sin(time * 1.2) * 0.1;
+                
                 particles.forEach(p => {
-                    p.y += p.snowSpeed * deltaTime;
-                    p.x += (Math.sin(time * 0.5 + p.y * 0.01) * 0.3 + p.snowDrift) * deltaTime;
-                    if (p.y > canvas.height + 50) { p.y = -50; p.x = Math.random() * canvas.width; }
+                    p.y += p.snowSpeed * deltaTime * (1 + snowfallPulse * 0.3);
+                    p.x += (Math.sin(time * 0.7 + p.y * 0.01) * 0.5 + p.snowDrift) * deltaTime * (1 + snowfallPulse * 0.2);
+                    if (p.y > canvas.height + 50) { 
+                        p.y = -50; 
+                        p.x = Math.random() * canvas.width; 
+                    }
+                    
+                    // Усиленная пульсация снежинок
+                    const pulseSize = p.snowSize * (1 + snowfallPulse * p.pulseIntensity * 0.8);
+                    const pulseOpacity = p.snowOpacity * (1 + snowfallPulse * 0.5);
+                    
                     ctx.beginPath();
-                    ctx.fillStyle = `hsla(330, 100%, 70%, ${p.snowOpacity})`;
-                    ctx.arc(p.x, p.y, p.snowSize, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(330, 100%, ${70 + snowfallBrightness * 30}%, ${pulseOpacity})`;
+                    ctx.arc(p.x, p.y, pulseSize, 0, Math.PI * 2);
                     ctx.fill();
                 });
             } else {
-                const scale = getHeartScale();
+                // В режиме ожидания - усиленная пульсация сердца из частиц
+                const idlePulse = Math.sin(time * 1.2) * 0.08 + Math.sin(time * 2.5) * 0.04;
+                const scale = getHeartScale() * (1 + idlePulse * 0.3);
+                const brightnessPulse = Math.sin(time * 0.9) * 0.1;
+                
                 particles.forEach(p => {
                     if (p.active) {
                         p.targetX = canvas.width / 2 + p.ox * scale;
@@ -384,13 +473,36 @@
                     }
                     p.x += (p.targetX - p.x) * p.speed * deltaTime;
                     p.y += (p.targetY - p.y) * p.speed * deltaTime;
+                    
+                    // Усиленная индивидуальная пульсация частиц
+                    const particlePulse = Math.sin(time * p.pulseSpeed + p.pulseOffset) * 0.12 * p.pulseIntensity;
+                    const currentSize = p.size * (1 + particlePulse) * (1 + idlePulse * 0.2);
+                    
                     ctx.beginPath();
-                    ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, 0.8)`;
-                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${p.hue}, 100%, ${70 + brightnessPulse * 20}%, ${0.8 * (1 + idlePulse * 0.3)})`;
+                    ctx.arc(p.x, p.y, currentSize, 0, Math.PI * 2);
                     ctx.fill();
                 });
+                
+                // Легкое свечение в режиме ожидания
+                if (Math.abs(idlePulse) > 0.05) {
+                    const glowSize = 80 + Math.abs(idlePulse) * 60;
+                    const gradient = ctx.createRadialGradient(
+                        canvas.width / 2, canvas.height / 2, 0,
+                        canvas.width / 2, canvas.height / 2, glowSize
+                    );
+                    gradient.addColorStop(0, `rgba(255, 100, 180, ${0.15 * Math.abs(idlePulse)})`);
+                    gradient.addColorStop(1, 'rgba(255, 100, 180, 0)');
+                    
+                    ctx.beginPath();
+                    ctx.fillStyle = gradient;
+                    ctx.arc(canvas.width / 2, canvas.height / 2, glowSize, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
                 if (Date.now() - animationStartTime > 3000) clickHint.style.opacity = '1';
             }
+            
             requestAnimationFrame(animate);
         }
 
